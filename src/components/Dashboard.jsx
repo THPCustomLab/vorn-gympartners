@@ -14,31 +14,31 @@ const MAX_WAVES = 20
 
 // Tiny CSV parser. Handles quoted fields, escaped quotes and trailing newlines.
 function parseCSV(text) {
-  const rows = []
-  let row = []
-  let cur = ''
-  let inQuotes = false
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i]
-    if (inQuotes) {
-      if (ch === '"') {
-        if (text[i + 1] === '"') { cur += '"'; i++ }
-        else inQuotes = false
-      } else {
-        cur += ch
-      }
-    } else {
-      if (ch === '"') inQuotes = true
-      else if (ch === ',') { row.push(cur); cur = '' }
-      else if (ch === '\n') { row.push(cur); rows.push(row); row = []; cur = '' }
-      else if (ch === '\r') { /* skip */ }
-      else cur += ch
-    }
-  }
-  if (cur.length > 0 || row.length > 0) { row.push(cur); rows.push(row) }
-  return rows.filter(r => r.length && r.some(c => c && c.trim() !== ''))
-}
+  // Remove BOM if present
+  text = text.replace(/^\uFEFF/, '')
 
+  const lines = text
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 0)
+
+  if (lines.length === 0) return []
+
+  const headers = lines[0]
+    .split(',')
+    .map(h => h.replace(/\ufeff/g, '').trim().toUpperCase())
+
+  return lines.slice(1).map(line => {
+    const values = line.split(',')
+    const obj = {}
+
+    headers.forEach((header, i) => {
+      obj[header] = values[i] ? values[i].trim() : ''
+    })
+
+    return obj
+  })
+}
 function toJson(rows) {
   if (!rows.length) return []
   const headers = rows[0].map(h => h.trim().toLowerCase())
@@ -71,14 +71,14 @@ export default function Dashboard({ onLogout }) {
       if (!res.ok) throw new Error('Fetch failed ' + res.status)
       const text = await res.text()
       const rows = parseCSV(text)
-      const json = toJson(rows)
-        .map(r => ({
-          gym: r.gym || r.name || '—',
-          pairs_confirmed: num(r.pairs_confirmed),
-          waves_unlocked: num(r.waves_unlocked),
-          pairs_to_next_wave: num(r.pairs_to_next_wave),
-          athletes: num(r.athletes) || num(r.pairs_confirmed) * 2
-        }))
+  const json = rows
+  .map(r => ({
+    gym: r["GYM PRTNR"] || '--',
+    pairs_confirmed: num(r["PAIRS CONFIRMED"]),
+    waves_unlocked: num(r["WAVES UNLOCKED"]),
+    pairs_to_next_wave: num(r["PAIRS TO NEXT WAVE"]),
+    athletes: num(r["ATHLETES"]) || num(r["PAIRS CONFIRMED"]) * 2
+  }))
         .filter(r => r.gym && r.gym !== '—')
         .sort((a, b) => b.pairs_confirmed - a.pairs_confirmed)
         .map((r, i) => ({ ...r, rank: i + 1 }))
